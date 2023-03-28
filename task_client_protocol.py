@@ -18,11 +18,11 @@ class TaskClientProtocol(asyncio.Protocol):
         self.__context_len = -1
 
     def connection_made(self, transport):
-        print('[{}] pull_task connection made, transport = {}'.format(__name__, transport))
+        print('[{}] task_cli connection made, transport = {}'.format(__name__, transport))
         self.__trans = transport
 
     def data_received(self, data):
-        print('[{}] Got data: {}'.format(__name__, data))
+        print('[{}] Got data, len={}'.format(__name__, len(data)))
         self.parse_and_handle_context(data)
 
     # TODO: parse and handle context
@@ -73,13 +73,15 @@ class TaskClientProtocol(asyncio.Protocol):
         print('[{}] ==== start handling context ====='.format(__name__))
 
         if context['cmd'] == 'pulled task':
-            task = context['body']
-            print('[{}] [...] Got task: {}'.format(__name__, task))
-            if task is not None:
+            prior_task = context['body']
+            if prior_task is not None:
+                print('[{}] [...] Got prior_task(len={})'.format(__name__, len(prior_task)))
                 print('[{}] [TRY_OFFLOAD] Got a Task to offload'.format(__name__))
-                self.__offloader_cbk(task)
+                self.__offloader_cbk(prior_task)
             else:
                 print('[{}] [SKIP] Got a None Task, skipping offloader_cbk'.format(__name__))
+        elif context['cmd'] == 'failed':
+            print('[{}] [TRY_OFFLOAD] Got a Failure'.format(__name__))
         else:
             print('[{}] [SKIP] Not a pulled task'.format(__name__))
 

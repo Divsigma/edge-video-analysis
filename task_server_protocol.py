@@ -2,23 +2,33 @@ import asyncio
 import queue
 import buffer
 import json
+import time
 
 class TaskQueue:
     def __init__(self):
         self.__q = queue.PriorityQueue(-1)
 
-    def put(self, prior, task):
-        self.__q.put((prior, task))
-        print('q size={}'.format(self.__q.qsize()))
+    def put(self, prior, prior_task):
+        print('to put prior={}'.format(prior))
+        try:
+            self.__q.put_nowait((prior, prior_task))
+            return True
+        except queue.Full:
+            print('queue is full')
+            print('q size={}'.format(self.__q.qsize()))
+            return False
 
     def get(self):
         print('q size={}'.format(self.__q.qsize()))
         try:
-            prior, task = self.__q.get_nowait()
-            return (prior, task)
+            prior, prior_task = self.__q.get_nowait()
+            return (prior, prior_task)
         except queue.Empty:
             print('queue is empty')
             return (None, None)
+
+    def qsize(self):
+        return self.__q.qsize()
 
 class TaskServerProtocol(asyncio.Protocol):
     def __init__(self, task_q):
@@ -48,7 +58,7 @@ class TaskServerProtocol(asyncio.Protocol):
         self.transport.close()
 
     def data_received(self, data):
-        print('Data received: {} on {}'.format(data, self.transport))
+        print('Data received (len={}) on {}'.format(len(data), self.transport))
         self.parse_and_handle_context(data)
 
     # TODO: parse and handle context
@@ -97,12 +107,13 @@ class TaskServerProtocol(asyncio.Protocol):
         print('start handling context')
 
         if context['cmd'] == 'pull':
-            print('try to get task from self.__task_q')
-            prior, task = self.__task_q.get()
-            print('get task from self.__task_q: task={}(prior={})'.format(task, prior))
+            print('try to get prior_task from self.__task_q')
+            prior, prior_task = self.__task_q.get()
+            if prior_task:
+                print('get prior_task from self.__task_q: prior_task(len={})(prior={})'.format(len(prior_task), prior))
             resp = dict()
             resp['cmd'] = 'pulled task'
-            resp['body'] = task
+            resp['body'] = prior_task
             json_resp = json.dumps(resp)
             len_json_resp = len(json_resp)
 
@@ -110,14 +121,23 @@ class TaskServerProtocol(asyncio.Protocol):
             self.transport.write(json_resp.encode())
 
         if context['cmd'] == 'push':
-            task = context['body']
-            self.__task_q.put(task['prior'], task['body'])
+            prior_task = context['body']
+            print('got one push prior_task(prior={}), pushed to Priority Queue (current qsize = {})'.format(prior_task['prior'], self.__task_q.qsize()))
+            ret = self.__task_q.put(prior_task['prior'], prior_task)
+            if ret == False:
+                resp = dict()
+                resp['cmd'] = 'failed'
+                json_resp = json.dumps(resp)
+                len_json_resp = len(json_resp)
+
+                self.transport.write(len_json_resp.to_bytes(length=4, byteorder='big', signed=False))
+                self.transport.write(json_resp.encode())
 
             # demo: echo task
-            json_ctx = json.dumps(context)
-            len_json_ctx = len(json_ctx)
-            self.transport.write(len_json_ctx.to_bytes(length=4, byteorder='big', signed=False))
-            self.transport.write(json_ctx.encode())
+            # json_ctx = json.dumps(context)
+            # len_json_ctx = len(json_ctx)
+            # self.transport.write(len_json_ctx.to_bytes(length=4, byteorder='big', signed=False))
+            # self.transport.write(json_ctx.encode())
 
         print('===== done one handling =====\n')
 
