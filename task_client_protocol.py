@@ -5,6 +5,7 @@ import multiprocessing as mp
 import json
 import buffer
 import random
+import protocol_buffer
 
 class TaskClientProtocol(asyncio.Protocol):
     def __init__(self, offloader_cbk):
@@ -12,10 +13,9 @@ class TaskClientProtocol(asyncio.Protocol):
         super(asyncio.Protocol, self).__init__()
         self.__offloader_cbk = offloader_cbk
         self.__trans = None
-        self.__recv_buf = buffer.Buffer()
-        self.__context = bytearray(b'')
-        self.__context_nbytes = 0
-        self.__context_len = -1
+
+        self.__ptb = protocol_buffer.ProtocolBuffer()
+        self.__ptb.set_context_handler(functools.partial(TaskClientProtocol.handle_context, self))
 
     def connection_made(self, transport):
         print('[{}] task_cli connection made, transport = {}'.format(__name__, transport))
@@ -23,49 +23,7 @@ class TaskClientProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         print('[{}] Got data, len={}'.format(__name__, len(data)))
-        self.parse_and_handle_context(data)
-
-    # TODO: parse and handle context
-    # stream: <len>(4 bytes)<body>('len' bytes)<len><body>...
-    # encode-decode: json
-    def parse_and_handle_context(self, data):
-        self.__recv_buf.append(data)
-        while self.__recv_buf.readable_bytes() >= 4:
-            # parse context
-            if self.__context_len == -1:
-                assert self.__recv_buf.readable_bytes() >= 4
-                len_data = self.__recv_buf.retrive_as_bytes(4)
-                self.__context_len = int.from_bytes(
-                    len_data, byteorder='big', signed=False
-                )
-                print('[{}] got request len:{}'.format(__name__, self.__context_len))
-
-            elif self.__context_nbytes < self.__context_len:
-                new_context_data = \
-                    self.__recv_buf.data[:self.__context_len - self.__context_nbytes]
-                self.__context.extend(new_context_data)
-                self.__context_nbytes += len(new_context_data)
-                self.__recv_buf.retrive(len(new_context_data))
-                print('[{}] current context len {}'.format(__name__, self.__context_nbytes))
-
-            # got context
-            if self.__context_nbytes == self.__context_len:
-                print('[{}] >>>> got request'.format(__name__))
-                context_bytes = self.__context.decode()
-                # print('[{}] len(context_bytes)={}'.format(__name__, len(context_bytes)))
-                assert len(context_bytes) == self.__context_len
-                # print('{}'.format(context_bytes))
-                # with open('context_bytes', 'w') as f:
-                #    print('{}'.format(context_bytes), file=f)
-                self.__context = json.loads(context_bytes)
-                self.handle_context(self.__context)
-
-                # reset context for next request
-                self.__context = bytearray(b'')
-                self.__context_nbytes = 0
-                self.__context_len = -1
-
-                print('[{}] <<<< done request\n'.format(__name__))
+        self.__ptb.parse_and_handle_context(data)
 
     # TODO: handle context
     def handle_context(self, context):

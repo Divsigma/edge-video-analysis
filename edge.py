@@ -10,8 +10,10 @@ import cv2
 import sys
 sys.path.append('test/headup_detect')
 import worker_func
+
 from task_client_protocol import TaskClientProtocol
 # from cloud_client_protocol import CloudClientProtocol
+
 import task_utils
 
 from pose_generator import PoseEstimationGenerator
