@@ -1,5 +1,23 @@
 # edge-video-analysis
 
+## 1、DEMO运行方法
+
+边缘端
+
+```shell
+$ python3 task_server_protocol.py --port=8888
+$ python3 edge.py --side=e --cloud_ip=<cloud_ip> --cloud_port=9999 --task_q_port=8888
+```
+
+云端
+
+```shell
+$ python3 task_server_protocol.py --port=7777
+$ python3 edge.py --side=c --cloud_port=9999 --task_q_port=7777
+```
+
+：为啥从web上看，越跑越慢...？
+
 ## 1、整体结构
 
 ### 1.1、事件检测层与调度层
@@ -66,5 +84,15 @@ ctx
     "field2":
     ...
     "fieldn":
+}
+```
+
+云边通信协议
+
+```js
+cloud_protocol
+{
+    "cmd": "strategy" | "resources" | "task",
+    "body": <resources_type> | <prior_task>
 }
 ```

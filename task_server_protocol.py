@@ -4,6 +4,7 @@ import buffer
 import json
 import time
 import functools
+import argparse
 
 import protocol_buffer
 
@@ -100,7 +101,7 @@ class TaskServerProtocol(asyncio.Protocol):
         print('===== done one handling =====\n')
 
 
-async def main():
+async def main(serv_port):
     # Get a reference to the event loop as we plan to use
     # low-level APIs.
     loop = asyncio.get_running_loop()
@@ -109,7 +110,7 @@ async def main():
 
     server = await loop.create_server(
         lambda: TaskServerProtocol(global_task_q),
-        '127.0.0.1', 8888)
+        '127.0.0.1', serv_port)
 
     print('start awaiting on server...')
 
@@ -117,4 +118,9 @@ async def main():
         await server.serve_forever()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', dest='port', type=int, default=7777)
+    args = parser.parse_args()
+
+    asyncio.run(main(args.port))
+

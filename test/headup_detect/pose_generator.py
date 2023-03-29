@@ -60,10 +60,15 @@ class Generator(abc.ABC):
             ret, frame = self.__video_q.read()
 
 class PoseEstimationGenerator(Generator):
+
     def fill_init_task(self, data):
         ctx = {}
         ctx['image'] = data
         return ctx
+
+    def generate_init_task(self, frame):
+        print('[{}] specific generate_init_task'.format(__name__))
+        return Generator.generate_init_task(self, frame)
 
 '''
 Mocking data queue
