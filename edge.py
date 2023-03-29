@@ -29,6 +29,43 @@ class CloudClientProtocol(asyncio.Protocol):
         print('Got data: {}'.format(data))
 
 #######################################
+# wrapper func: (used by offloader)
+#     pull task from task queue server
+#######################################
+async def pull_task_from_task_serv(client_trans):
+    request = dict()
+ 
+    request['cmd'] = 'pull'
+    request['body'] = None
+
+    json_req = json.dumps(request)
+    len_json_req = len(json_req)
+
+    client_trans.write(len_json_req.to_bytes(length=4, byteorder='big', signed=False))
+    client_trans.write(json_req.encode())
+
+#######################################
+# wrapper func: (used by worker, generator)
+#     produce task to task queue server
+#######################################
+async def push_task_to_task_serv(client_trans, task_body):
+
+    request = dict()
+    prior_task = dict()
+
+    prior_task['prior'] = (-1 * task_body['cur_step'], task_body['t_init'])
+    prior_task['body'] = task_utils.encode_task(task_body)
+    request['cmd'] = 'push'
+    request['body'] = prior_task
+
+    print('[push_task_to_task_serv] produce_new_task (prior= {})'.format(prior_task['prior']))
+    json_req = json.dumps(request)
+    len_json_req = len(json_req)
+
+    client_trans.write(len_json_req.to_bytes(length=4, byteorder='big', signed=False))
+    client_trans.write(json_req.encode())
+
+#######################################
 # offloader func:
 #     decide where to execute a task
 #
@@ -51,7 +88,7 @@ def offloader_cbk(local_task_q, cloud_cli_trans, prior_task):
 # offloader func:
 #     offloader main loop
 #######################################
-async def offloader_main(local_task_q):
+async def offloader_loop(local_task_q):
 
     loop = asyncio.get_running_loop()
 
@@ -80,34 +117,7 @@ async def offloader_main(local_task_q):
         await asyncio.sleep(0.03)
 
         # request to task server
-        request['cmd'] = 'pull'
-        request['body'] = None
-        json_req = json.dumps(request)
-        len_json_req = len(json_req)
-
-        task_cli_trans.write(len_json_req.to_bytes(length=4, byteorder='big', signed=False))
-        task_cli_trans.write(json_req.encode())
-
-#######################################
-# wrapper func: (used by worker, generator)
-#     produce task to task queue server
-#######################################
-async def push_to_task_serv(client_trans, task_body):
-
-    request = dict()
-    prior_task = dict()
-
-    prior_task['prior'] = (-1 * task_body['cur_step'], task_body['t_init'])
-    prior_task['body'] = task_utils.encode_task(task_body)
-    request['cmd'] = 'push'
-    request['body'] = prior_task
-
-    print('[push_to_task_serv] produce_new_task (prior= {})'.format(prior_task['prior']))
-    json_req = json.dumps(request)
-    len_json_req = len(json_req)
-
-    client_trans.write(len_json_req.to_bytes(length=4, byteorder='big', signed=False))
-    client_trans.write(json_req.encode())
+        await pull_task_from_task_serv(task_cli_trans)
 
 #######################################
 # worker func:
@@ -138,11 +148,10 @@ async def worker_loop(exec_obj, local_task_q, task_q_host, task_q_port):
 
         # demo: simulate executing for a while
         ret_task = exec_obj.do_task(task)
-        # await asyncio.sleep(4)
 
         # produce next task
         print('[worker_loop] pushing new task')
-        await push_to_task_serv(task_cli_trans,
+        await push_task_to_task_serv(task_cli_trans,
                                 task_body=ret_task)
         print('[worker_loop] pushed new task')
 
@@ -172,7 +181,7 @@ async def generator_loop(gene_obj, task_q_host, task_q_port):
         init_task = gene_obj.generate_init_task(frame)
 
         print('[generator_loop] pushing init task')
-        await push_to_task_serv(task_cli_trans,
+        await push_task_to_task_serv(task_cli_trans,
                                 task_body=init_task)
         print('[generator_loop] pushed init task, count = {}'.format(count))
         count = count + 1
@@ -180,8 +189,14 @@ async def generator_loop(gene_obj, task_q_host, task_q_port):
         await asyncio.sleep(sec_produce_interval)
 
         ret, frame = video_cap.read()
-    
 
+#######################################
+# displayer func:
+#     displayer main loop
+#######################################
+async def displayer_loop(disp_obj, local_task_q):
+    disp_obj.start_displaying(local_task_q)
+    
 #######################################
 # worker entry:
 #     ENTRY for worker sub-process
@@ -191,47 +206,38 @@ def worker_main(exec_objname, local_task_q, task_q_host, task_q_port):
     exec_obj = None
     if exec_objname == 'PoseEstimationExecutor':
         print('starting PoseEstimationExecutor')
-        # init executor
         exec_obj = PoseEstimationExecutor()
-        # init task flow that can be executed by executor
         exec_obj.register_workflow(pose_worker.demo_header)
         print('PoseEstimationExecutor started')
     elif exec_objname == 'PoseEstimationDisplayer':
         print('starting PoseEstimationDisplayer')
         exec_obj = PoseEstimationDisplayer()
-        exec_obj.start_displaying(local_task_q)
         print('PoseEstimationDisplayer started')
+    elif exec_objname == 'PoseEstimationGenerator':
+        print('staring PoseEstimationGenerator')
+        exec_obj = PoseEstimationGenerator(video_cap=None, init_task_q=None)
+        exec_obj.register_workflow(pose_worker.demo_header)
+        print('PoseEstimationGenerator started')
     else:
         print('[NOT SUPPORT EXEC_OBJNAME]...')
 
     # begin a loop here ...
-    if exec_obj and task_q_host:
-        asyncio.run(worker_loop(exec_obj, local_task_q, task_q_host, task_q_port))
+    if exec_obj:
+        if exec_objname == 'PoseEstimationGenerator':
+            asyncio.run(generator_loop(exec_obj, task_q_host, task_q_port))
+        elif exec_objname == 'PoseEstimationDisplayer':
+            asyncio.run(displayer_loop(exec_obj, local_task_q))
+        elif exec_objname == 'PoseEstimationExecutor':
+            asyncio.run(worker_loop(exec_obj, local_task_q, task_q_host, task_q_port))
+        else:
+            print('[NOT SUPPORT EXEC_OBJNAME]...')
     else:
-        print('exec_obj or task_q_host is None')
+        print('exec_obj is None')
 
 #######################################
-# generator entry:
-#     ENTRY for generator sub-process
-#######################################
-def generator_main(gene_objname, task_q_host, task_q_port):
-    print('starting generator_loop...')
-    gene_obj = None
-    if gene_objname == 'PoseEstimationGenerator':
-        print('staring PoseEstimationGenerator')
-        gene_obj = PoseEstimationGenerator(video_cap=None, init_task_q=None)
-        gene_obj.register_workflow(pose_worker.demo_header)
-        print('PoseEstimationGenerator started')
-    else:
-        print('[NOT SUPPORT GENE_OBJNAME]...')
-
-    if gene_obj is not None:
-        asyncio.run(generator_loop(gene_obj, task_q_host, task_q_port))
-    else:
-        print('gene_obj is None')
-
-#######################################
-# MAIN 
+# offloader entry:
+#    ENTRY for offloader
+#    also the ENTRY for edge.py
 #######################################
 if __name__ == '__main__':
 
@@ -244,17 +250,18 @@ if __name__ == '__main__':
                          args=('PoseEstimationExecutor',
                                local_task_q[0],
                                '127.0.0.1', 8888))
+    generator1 = mp.Process(target=worker_main,
+                            args=('PoseEstimationGenerator',
+                                  None,
+                                  '127.0.0.1', 8888))
     disp1 = mp.Process(target=worker_main,
                        args=('PoseEstimationDisplayer',
                              local_task_q[1],
                              None, None))
-    generator1 = mp.Process(target=generator_main,
-                            args=('PoseEstimationGenerator',
-                                  '127.0.0.1', 8888))
     worker1.start()
     generator1.start()
     disp1.start()
 
     # run offloader
-    asyncio.run(offloader_main(local_task_q))
+    asyncio.run(offloader_loop(local_task_q))
     print('out of asyncio')
