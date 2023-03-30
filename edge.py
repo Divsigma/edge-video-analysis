@@ -12,6 +12,7 @@ import sys
 sys.path.append('test/headup_detect')
 import worker_func
 
+import task_server_protocol
 from task_client_protocol import TaskClientProtocol
 from cloud_server_protocol import CloudServerProtocol
 from cloud_client_protocol import CloudClientProtocol
@@ -327,14 +328,19 @@ def worker_main(exec_objname, local_task_q, task_q_host, task_q_port):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--side', dest='side', type=str)
-    parser.add_argument('--cloud_ip', dest='cloud_ip', type=str)
+    parser.add_argument('--side', dest='side', type=str, required=True)
+    parser.add_argument('--cloud_ip', dest='cloud_ip', type=str, default='192.168.56.102')
     parser.add_argument('--cloud_port', dest='cloud_port', type=int, default=9999)
     parser.add_argument('--task_q_port', dest='task_q_port', type=int, default=7777)
     args = parser.parse_args()
 
+    if args.side == 'e':
+        args.task_q_port = 8888
+    if args.side == 'c':
+        args.task_q_port = 7777
+
     # should create a MULTI-PROCESS queue
-    # to deliver task from Offloader to Worker
+    # to deliver task from offloader to worker
     local_task_q = [mp.Queue(10), mp.Queue(10)]
 
     # app_obj = wzl_fun.AppInfo()
@@ -354,6 +360,13 @@ if __name__ == '__main__':
                            args=('PoseEstimationDisplayer',
                                  local_task_q[1],
                                  None, None))
+
+    # start task queue server
+    task_q_server = mp.Process(target=task_server_protocol.init_and_start_task_q_server,
+                               args=(args.task_q_port,))
+    task_q_server.start()
+
+
     worker1.start()
     if args.side == 'e':
         generator1.start()

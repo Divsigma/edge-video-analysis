@@ -2,18 +2,16 @@
 
 ## 1、DEMO运行方法
 
-边缘端
+边缘端（需要手动在test/headup_detect/input/下放置input.mov）
 
 ```shell
-$ python3 task_server_protocol.py --port=8888
-$ python3 edge.py --side=e --cloud_ip=<cloud_ip> --cloud_port=9999 --task_q_port=8888
+$ python3 edge.py --side=e --cloud_ip=<cloud_ip>
 ```
 
 云端
 
 ```shell
-$ python3 task_server_protocol.py --port=7777
-$ python3 edge.py --side=c --cloud_port=9999 --task_q_port=7777
+$ python3 edge.py --side=c
 ```
 
 ：为啥从web上看，越跑越慢...？

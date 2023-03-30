@@ -101,7 +101,7 @@ class TaskServerProtocol(asyncio.Protocol):
         root_logger.info('<< done handling a context (cmd = {})'.format(context['cmd']))
 
 
-async def main(serv_port):
+async def task_q_server_loop(serv_port):
     # Get a reference to the event loop as we plan to use
     # low-level APIs.
     loop = asyncio.get_running_loop()
@@ -117,10 +117,13 @@ async def main(serv_port):
     async with server:
         await server.serve_forever()
 
+def init_and_start_task_q_server(serv_port):
+    asyncio.run(task_q_server_loop(serv_port))
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', dest='port', type=int, default=7777)
     args = parser.parse_args()
 
-    asyncio.run(main(args.port))
+    asyncio.run(task_q_server_loop(args.port))
 
