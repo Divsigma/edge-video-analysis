@@ -2,50 +2,49 @@ import asyncio
 import functools
 
 import protocol_buffer
+from logging_utils import root_logger
 
 class CloudServerProtocol(asyncio.Protocol):
     def __init__(self, offloader_cbk):
-        print('[{}] initing...'.format(__name__))
+        root_logger.info('initing...')
         super(asyncio.Protocol, self).__init__()
 
-        self.__transport = None
+        self.__trans = None
         self.__offloader_cbk = offloader_cbk
 
         self.__ptb = protocol_buffer.ProtocolBuffer()
         self.__ptb.set_context_handler(functools.partial(CloudServerProtocol.handle_context, self))
 
-        print('[{}] done init...'.format(__name__))
+        root_logger.info('done init...')
 
     def connection_made(self, transport):
-        peername = transport.get_extra_info('peername')
-        print('Connection from {}'.format(peername))
-        self.__transport = transport
+        root_logger.info('connection from {}'.format(transport.get_extra_info('peername')))
+        self.__trans = transport
 
     def eof_received(self):
-        print('Closing: {}'.format(self.__transport))
-        self.__transport.write('server: done writing'.encode())
-        self.__transport.close()
+        root_logger.info('closing {}'.format(self.__trans))
+        self.__trans.write('server: done writing'.encode())
+        self.__trans.close()
 
     def data_received(self, data):
-        print('Data received (len={}) on {}'.format(len(data), self.__transport))
+        root_logger.debug('data received (len = {}) on {}'.format(len(data), self.__trans))
         self.__ptb.parse_and_handle_context(data)
 
     def handle_context(self, context):
-        print('[{}] cmd = {}'.format(__name__, context['cmd']))
-        print('[{}] ==== start handling context ===='.format(__name__))
+        root_logger.info('>> start handling a context (cmd = {})'.format(context['cmd']))
 
         if context['cmd'] == 'task':
             # TODO
-            print('[{}] receive prior task from edge'.format(__name__))
+            root_logger.info('[OK] receive prior_task from edge, try offloading')
             prior_task = context['body']
             if self.__offloader_cbk:
                 self.__offloader_cbk(prior_task)
             else:
-                print('[{}] self.__offloader_cbk is None'.format(__name__))
+                root_logger.warning('self.__offloader_cbk is None')
         else:
-            print('[{}] [SKIP] not support cmd'.format(__name__))
+            root_logger.warning('[SKIP] not support cmd')
 
-        print('[{}] ==== done one handling ===='.format(__name__))
+        root_logger.info('<< done handling a context (cmd = {})'.format(context['cmd']))
 
 async def test_main():
     # Get a reference to the event loop as we plan to use
@@ -57,11 +56,11 @@ async def test_main():
         '0.0.0.0', 9999
     )
 
-    print('[{}] create server: {}'.format(__name__, server))
+    root_logger.info('create server on port = 9999')
 
     while True:
         await asyncio.sleep(5)
-        print('[{}] wake up once'.format(__name__))
+        root_logger.info('wake up once')
 
     # async with server:
     #    await server.serve_forever()

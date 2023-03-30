@@ -17,6 +17,7 @@ from cloud_server_protocol import CloudServerProtocol
 from cloud_client_protocol import CloudClientProtocol
 
 import task_utils
+from logging_utils import root_logger
 
 from pose_generator import PoseEstimationGenerator
 from pose_worker import PoseEstimationExecutor
@@ -53,7 +54,7 @@ def push_task_to_task_serv(client_trans, cmd, task_body):
     request['cmd'] = cmd
     request['body'] = prior_task
 
-    print('[push_task_to_task_serv] produce_new_task (prior= {})'.format(prior_task['prior']))
+    root_logger.info('produce_new_task (cmd = {}, prior= {})'.format(cmd, prior_task['prior']))
     json_req = json.dumps(request)
     len_json_req = len(json_req)
 
@@ -89,13 +90,13 @@ def edge_offloader_cbk(local_task_q, cloud_cli_trans, prior_task):
     # task = task_utils.decode_task(prior_task['body'])
     # push_task_to_task_serv(cloud_cli_trans, cmd='task', task_body=task)
 
-    print('[{}] Partially offload prior_task(prior={}) to cloud ...(local_task_q.qsize() = {})'.\
-          format(__name__, prior_task['prior'], [q.qsize() for q in local_task_q]))
+    root_logger.info('partially offload prior_task (prior = {}) to CLOUD, local_task_q.qsize() = {}'.\
+                     format(prior_task['prior'], [q.qsize() for q in local_task_q]))
     task = task_utils.decode_task(prior_task['body'])
     task_name = task['task_name']
-    if task_name == 'D':
+    if task_name == 'D' or task_name == 'C':
         local_task_q[0].put(task)
-    elif task_name == 'C' or task_name == 'R':
+    elif task_name == 'R':
         push_task_to_task_serv(cloud_cli_trans, cmd='task', task_body=task)
 
 #######################################
@@ -111,7 +112,7 @@ async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
         lambda: CloudClientProtocol(),
         cloud_ip, cloud_port
     )
-    print('[{}] connect to cloud_ip={} cloud_port={}'.format(__name__, cloud_ip, cloud_port))
+    root_logger.info('connected to cloud_ip = {}, cloud_port = {}'.format(cloud_ip, cloud_port))
     # cloud_cli_trans = None
 
     # connect to task queue for pulling task
@@ -124,7 +125,7 @@ async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
 
     # TODO: pulling for task every one sec
     while True:
-        print('[offloader_loop] try to pull one task')
+        root_logger.info('try to pull one task')
 
         await asyncio.sleep(0.03)
 
@@ -143,15 +144,15 @@ async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
 #
 #######################################
 def cloud_offloader_cbk(local_task_q, prior_task):
-    print('[{}] Always offloading prior_task(prior={}) to local ...(local_task_q.qsize() = {})'.\
-          format(__name__, prior_task['prior'], [q.qsize() for q in local_task_q]))
+    root_logger.info('always offloading prior_task (prior = {}) to LOCAL, local_task_q.qsize() = {}'.\
+                     format(prior_task['prior'], [q.qsize() for q in local_task_q]))
     # NOTE: will block
     task = task_utils.decode_task(prior_task['body'])
     task_name = task['task_name']
     if task_name == 'D' or task_name == 'C':
         local_task_q[0].put(task)
     elif task_name == 'R':
-        print('[{}] offloading a result'.format(__name__))
+        root_logger.info('offloading a result')
         local_task_q[1].put(task)
 
 #######################################
@@ -170,7 +171,7 @@ async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
         ),
         '0.0.0.0', cloud_port
     )
-    print('[{}] listen on cloud_port={}'.format(__name__, cloud_port))
+    root_logger.info('listening on cloud_port = {}'.format(cloud_port))
 
     # connect to task queue for pulling task
     task_cli_trans, task_cli_protocol = await loop.create_connection(
@@ -182,13 +183,13 @@ async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
 
     # TODO: pulling for task every one sec
     while True:
-        print('[cloud_offloader_loop] try to pull one task')
-        # await asyncio.sleep(5)
+        root_logger.info('try to pull one task')
 
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(5)
+        # await asyncio.sleep(0.03)
 
         # request to task server
-        pull_task_from_task_serv(task_cli_trans)
+        # pull_task_from_task_serv(task_cli_trans)
 
 
 
@@ -214,19 +215,18 @@ async def worker_loop(exec_obj, local_task_q, task_q_host, task_q_port):
     # print('worker_loop pushed init task')
 
     # worker only pull task from local q (a MULTI-PROCESS queue)
-    print('worker_loop looping...')
+    root_logger.info('worker_loop looping...')
     while True:
-        print('[worker_loop] try to get task')
+        root_logger.info('try to get task from LOCAL')
         task = local_task_q.get()
-        print('[worker_loop] got task (len={})'.format(len(task)))
+        root_logger.info('got task from LOCAL (len={})'.format(len(task)))
 
         # demo: simulate executing for a while
         ret_task = exec_obj.do_task(task)
 
         # produce next task
-        print('[worker_loop] pushing new task')
+        root_logger.info('pushing new task')
         push_task_to_task_serv(task_cli_trans, cmd='push', task_body=ret_task)
-        print('[worker_loop] pushed new task')
 
 
 
@@ -253,14 +253,14 @@ async def generator_loop(gene_obj, task_q_host, task_q_port):
     # gene_obj = wzl_fun.Generator(app_info)
 
     while ret:
-        print('[generator_loop] generating init task')
+        root_logger.info('generating init task')
         ret, frame = video_cap.read()
         init_task = gene_obj.generate_init_task(frame)
         assert(init_task)
 
-        print('[generator_loop] pushing init task')
+        root_logger.info('pushing init task')
         push_task_to_task_serv(task_cli_trans, cmd='push', task_body=init_task)
-        print('[generator_loop] pushed init task, count = {}'.format(count))
+        root_logger.info('pushed init task, count = {}'.format(count))
         count = count + 1
 
         await asyncio.sleep(sec_produce_interval)
@@ -287,28 +287,23 @@ async def displayer_loop(disp_obj, local_task_q):
 #     ENTRY for worker sub-process
 #######################################
 def worker_main(exec_objname, local_task_q, task_q_host, task_q_port):
-    print('starting worker_loop...')
     exec_obj = None
+    root_logger.info('starting {}'.format(exec_objname))
     if exec_objname == 'PoseEstimationExecutor':
-        print('starting PoseEstimationExecutor')
         exec_obj = PoseEstimationExecutor()
         exec_obj.register_workflow(pose_worker.demo_header)
         # exec_obj.register_workflow(apo_info.get_info())
-        print('PoseEstimationExecutor started')
     elif exec_objname == 'PoseEstimationDisplayer':
-        print('starting PoseEstimationDisplayer')
         exec_obj = PoseEstimationDisplayer()
-        print('PoseEstimationDisplayer started')
     elif exec_objname == 'PoseEstimationGenerator':
-        print('staring PoseEstimationGenerator')
         exec_obj = PoseEstimationGenerator(video_cap=None, init_task_q=None)
         exec_obj.register_workflow(pose_worker.demo_header)
-        print('PoseEstimationGenerator started')
     else:
-        print('[NOT SUPPORT EXEC_OBJNAME]...')
+        root_logger.warning('not support exec_objname')
 
     # begin a loop here ...
     if exec_obj:
+        root_logger.info('exec_obj {} started'.format(exec_objname))
         if exec_objname == 'PoseEstimationGenerator':
             asyncio.run(generator_loop(exec_obj, task_q_host, task_q_port))
         elif exec_objname == 'PoseEstimationDisplayer':
@@ -316,9 +311,9 @@ def worker_main(exec_objname, local_task_q, task_q_host, task_q_port):
         elif exec_objname == 'PoseEstimationExecutor':
             asyncio.run(worker_loop(exec_obj, local_task_q, task_q_host, task_q_port))
         else:
-            print('[NOT SUPPORT EXEC_OBJNAME]...')
+            root_logger.warning('not support exec_objname')
     else:
-        print('exec_obj is None')
+        root_logger.warning('exec_obj is None')
 
 
 
@@ -372,7 +367,7 @@ if __name__ == '__main__':
     elif args.side == 'c':
         asyncio.run(cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port))
     else:
-        print('[{}] ERROR cannot start offloader_loop'.format(__name__))
+        root_logger.info('[ERROR] cannot start offloader_loop')
         worker1.terminate()
         exit(1)
 

@@ -3,47 +3,48 @@ import time
 import functools
 import multiprocessing as mp
 import json
-import buffer
 import random
+
+import buffer
 import protocol_buffer
+from logging_utils import root_logger
 
 class TaskClientProtocol(asyncio.Protocol):
     def __init__(self, offloader_cbk):
-        print('[{}] initing..'.format(__name__))
+        root_logger.info('initing..')
         super(asyncio.Protocol, self).__init__()
         self.__offloader_cbk = offloader_cbk
         self.__trans = None
 
         self.__ptb = protocol_buffer.ProtocolBuffer()
         self.__ptb.set_context_handler(functools.partial(TaskClientProtocol.handle_context, self))
+        root_logger.info('done init')
 
     def connection_made(self, transport):
-        print('[{}] task_cli connection made, transport = {}'.format(__name__, transport))
+        root_logger.info('connected to {}'.format(transport.get_extra_info('peername')))
         self.__trans = transport
 
     def data_received(self, data):
-        print('[{}] Got data, len={}'.format(__name__, len(data)))
+        root_logger.debug('receive data (len = {} bytes) on {}'.format(len(data), self.__trans))
         self.__ptb.parse_and_handle_context(data)
 
     # TODO: handle context
     def handle_context(self, context):
-        print('[{}] cmd={}'.format(__name__, context['cmd']))
-        print('[{}] ==== start handling context ====='.format(__name__))
+        root_logger.info('>> start handling a context (cmd = {})'.format(context['cmd']))
 
         if context['cmd'] == 'pulled task':
             prior_task = context['body']
             if prior_task is not None:
-                print('[{}] [...] Got prior_task(len={})'.format(__name__, len(prior_task)))
-                print('[{}] [TRY_OFFLOAD] Got a Task to offload'.format(__name__))
+                root_logger.info('[OK] got a prior_task (len = {}) to offload, starting offloading'.format(len(prior_task)))
                 self.__offloader_cbk(prior_task)
             else:
-                print('[{}] [SKIP] Got a None Task, skipping offloader_cbk'.format(__name__))
+                root_logger.warning('[OK] got a none prior_task, skipping self.__offloader_cbk')
         elif context['cmd'] == 'failed':
-            print('[{}] [TRY_OFFLOAD] Got a Failure'.format(__name__))
+            root_logger.warning('[FAILURE] got a failure context')
         else:
-            print('[{}] [SKIP] Not a pulled task'.format(__name__))
+            root_logger.warning('[SKIP] not a pulled prior_task')
 
-        print('[{}] ==== done one handling ====='.format(__name__))
+        root_logger.info('<< done handling a context (cmd = {})'.format(context['cmd']))
 
 if __name__ == '__main__':
     print('{} empty'.format(__name__))
