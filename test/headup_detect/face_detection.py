@@ -51,3 +51,31 @@ class FaceDetection:
         output_ctx['bbox'] = [boxes[i, :].numpy().tolist() for i in range(boxes.size(0))]
         output_ctx['prob'] = [probs[i].item() for i in range(probs.size(0))]
         return output_ctx
+
+if __name__ == '__main__':
+    args = {
+        'net_type': 'mb_tiny_RFB_fd',
+        'input_size': 480,
+        'threshold': 0.7,
+        'candidate_size': 1500,
+        'device': 'cpu'
+    }
+
+    detector = FaceDetection(args)
+
+    import cv2
+    video_cap = cv2.VideoCapture('input/input.mov')
+
+    ret, frame = video_cap.read()
+
+    while ret:
+        ret, frame = video_cap.read()
+
+        input_ctx = dict()
+        input_ctx['image'] = frame
+        detector(input_ctx)
+        print('detect one frame')
+
+
+
+

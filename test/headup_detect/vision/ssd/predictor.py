@@ -27,11 +27,13 @@ class Predictor:
         self.timer = Timer()
 
     def predict(self, image, top_k=-1, prob_threshold=None):
+        print('[{}] begin predicting...'.format(__name__))
         cpu_device = torch.device('cpu')
         height, width, _ = image.shape
         image = self.transform(image)
         images = image.unsqueeze(0)
         images = images.to(self.device)
+        print('[{}] begin torch.no_grad()...'.format(__name__))
         with torch.no_grad():
             self.timer.start()
             scores, boxes = self.net.forward(images)
