@@ -106,7 +106,7 @@ def edge_offloader_cbk(local_task_q, cloud_cli_trans, prior_task):
 #######################################
 async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
 
-    loop = asyncio.get_running_loop()
+    loop = asyncio._get_running_loop()
 
     # connect to cloud server for uploading task
     cloud_cli_trans, cloud_cli_protocol = await loop.create_connection(
@@ -162,7 +162,7 @@ def cloud_offloader_cbk(local_task_q, prior_task):
 #######################################
 async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
 
-    loop = asyncio.get_running_loop()
+    loop = asyncio._get_running_loop()
 
     # create a cloud server for accepting task
     # WARNING: WHY NO ERROR on stdout when cannot create CloudServerProtocol() ?
@@ -202,7 +202,7 @@ async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
 #######################################
 async def worker_loop(exec_obj, local_task_q, task_q_host, task_q_port):
 
-    loop = asyncio.get_running_loop()
+    loop = asyncio._get_running_loop()
 
     # connect to task server for pushing task
     task_cli_trans, task_cli_protocol = await loop.create_connection(
@@ -238,14 +238,15 @@ async def worker_loop(exec_obj, local_task_q, task_q_host, task_q_port):
 #     generator main loop
 #######################################
 async def generator_loop(gene_obj, task_q_host, task_q_port):
-    loop = asyncio.get_running_loop()
+    loop = asyncio._get_running_loop()
 
     task_cli_trans, task_cli_protocol = await loop.create_connection(
         lambda: TaskClientProtocol(None),
         task_q_host, task_q_port
     )
 
-    video_cap = cv2.VideoCapture('test/headup_detect/input/input.mov') 
+    # video_cap = cv2.VideoCapture('test/headup_detect/input/input.mov') 
+    video_cap = cv2.VideoCapture('test/headup_detect/input/input1.mp4') 
     ret, frame = video_cap.read()
 
     count = 0
@@ -306,11 +307,21 @@ def worker_main(exec_objname, local_task_q, task_q_host, task_q_port):
     if exec_obj:
         root_logger.info('exec_obj {} started'.format(exec_objname))
         if exec_objname == 'PoseEstimationGenerator':
-            asyncio.run(generator_loop(exec_obj, task_q_host, task_q_port))
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(asyncio.wait(
+                [generator_loop(exec_obj, task_q_host, task_q_port)]
+            ))
+            loop.run_forever()
+            # asyncio.run(generator_loop(exec_obj, task_q_host, task_q_port))
         elif exec_objname == 'PoseEstimationDisplayer':
             asyncio.run(displayer_loop(exec_obj, local_task_q))
         elif exec_objname == 'PoseEstimationExecutor':
-            asyncio.run(worker_loop(exec_obj, local_task_q, task_q_host, task_q_port))
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(asyncio.wait(
+                [worker_loop(exec_obj, local_task_q, task_q_host, task_q_port)]
+            ))
+            loop.run_forever()
+            # asyncio.run(worker_loop(exec_obj, local_task_q, task_q_host, task_q_port))
         else:
             root_logger.warning('not support exec_objname')
     else:
@@ -376,7 +387,12 @@ if __name__ == '__main__':
     # run offloader
 
     if args.side == 'e' and args.cloud_ip and args.cloud_port:
-        asyncio.run(edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port))
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.wait(
+            [edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port)]
+        ))
+        loop.run_forever()
+        # asyncio.run(edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port))
     elif args.side == 'c':
         asyncio.run(cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port))
     else:

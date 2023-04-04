@@ -24,8 +24,8 @@ demo_header = {
                 'input_size': 480,
                 'threshold': 0.7,
                 'candidate_size': 1500,
-                # 'device': 'cuda:0'
-                'device': 'cpu'
+                'device': 'cuda:0'
+                # 'device': 'cpu'
             },
             'C': {
                 # 'lite_version': False,
@@ -33,8 +33,8 @@ demo_header = {
                 'lite_version': True,
                 'model_path': 'models/hopenet_lite_6MB.pkl',
                 'batch_size': 1,
-                # 'device': 'cuda:0'
-                'device': 'cpu'
+                'device': 'cuda:0'
+                # 'device': 'cpu'
             }   
         },
         'input_ctx': {

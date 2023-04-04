@@ -11,7 +11,8 @@ class FaceDetection:
 
         # must put define_img_size() before 'import create_mb_tiny_fd, create_mb_tiny_fd_predictor'
         ori_dir = os.getcwd()
-        os.chdir(os.path.dirname(__file__))
+        os.chdir(os.path.dirname(__file__) or '.')
+        print('{}'.format(os.getcwd()))
 
         define_img_size(args['input_size'])
         label = 'models/voc-model-labels.txt'
@@ -58,7 +59,8 @@ if __name__ == '__main__':
         'input_size': 480,
         'threshold': 0.7,
         'candidate_size': 1500,
-        'device': 'cpu'
+        # 'device': 'cpu'
+        'device': 'cuda:0'
     }
 
     detector = FaceDetection(args)

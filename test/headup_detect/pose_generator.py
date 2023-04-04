@@ -86,7 +86,7 @@ signal.signal(signal.SIGINT, term_handler)
 
 def init_and_start_generator_proc(header, init_task_q):
 
-    video_cap = cv2.VideoCapture('input/input.mov')
+    video_cap = cv2.VideoCapture('input/input1.mp4')
 
     pose_generator = PoseEstimationGenerator(video_cap, init_task_q)
 

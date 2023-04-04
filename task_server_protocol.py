@@ -104,7 +104,7 @@ class TaskServerProtocol(asyncio.Protocol):
 async def task_q_server_loop(serv_port):
     # Get a reference to the event loop as we plan to use
     # low-level APIs.
-    loop = asyncio.get_running_loop()
+    loop = asyncio._get_running_loop()
 
     global_task_q = TaskQueue()
 
@@ -114,11 +114,16 @@ async def task_q_server_loop(serv_port):
 
     root_logger.info('start awaiting on server(port = {})...'.format(serv_port))
 
-    async with server:
-        await server.serve_forever()
+    # async with server:
+    #     await server.serve_forever()
 
 def init_and_start_task_q_server(serv_port):
-    asyncio.run(task_q_server_loop(serv_port))
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(asyncio.wait(
+        [task_q_server_loop(serv_port)]
+    ))
+    loop.run_forever()
+    # asyncio.run(task_q_server_loop(serv_port))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
