@@ -1,4 +1,3 @@
-import sys
 import cv2
 import face_detection
 import face_alignment_cnn
@@ -6,11 +5,11 @@ import numpy as np
 from utils import utils
 import time
 import os
-import worker_func
-import multiprocessing as mp
 import functools
-import pose_generator
-import cam_web
+
+import sys
+sys.path.append('../..')
+import executor
 
 demo_header = {
         'name': 'POSE_ESTIMATION',
@@ -24,8 +23,8 @@ demo_header = {
                 'input_size': 480,
                 'threshold': 0.7,
                 'candidate_size': 1500,
-                'device': 'cuda:0'
-                # 'device': 'cpu'
+                # 'device': 'cuda:0'
+                'device': 'cpu'
             },
             'C': {
                 # 'lite_version': False,
@@ -33,8 +32,8 @@ demo_header = {
                 'lite_version': True,
                 'model_path': 'models/hopenet_lite_6MB.pkl',
                 'batch_size': 1,
-                'device': 'cuda:0'
-                # 'device': 'cpu'
+                # 'device': 'cuda:0'
+                'device': 'cpu'
             }   
         },
         'input_ctx': {
@@ -49,7 +48,7 @@ demo_header = {
         }   
     }
 
-class PoseEstimationExecutor(worker_func.Executor):
+class PoseEstimationExecutor(executor.Executor):
     def __init__(self):
         super(PoseEstimationExecutor, self).__init__()
         self.set_load_executor_handler = functools.partial(PoseEstimationExecutor.load_executor, self)
@@ -83,6 +82,9 @@ signal.signal(signal.SIGINT, term_handler)
 
 if __name__ == '__main__':
 
+    import multiprocessing as mp
+    import pose_generator
+    import cam_web
 
     res_q = mp.Queue(5)
     ui_proc = mp.Process(target=cam_web.init_and_start_ui_proc,

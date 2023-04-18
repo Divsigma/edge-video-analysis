@@ -1,11 +1,8 @@
-import sys
-import cv2
-import face_detection
-import face_alignment_cnn
 import numpy as np
-from utils import utils
 import time
 import os
+
+from logging_utils import root_logger
 
 class Executor():
     def __init__(self):
@@ -41,11 +38,11 @@ class Executor():
             res_task['task_name'] = 'R'
             res_task['t_end'] = time.time()
             res_task['input_ctx'] = output_ctx
-            print('task-{} come to an end'.format(task['id']))
-            print('task-{} t_consume={}, t_init={}, t_end={}'.format(
-                  task['id'], res_task['t_end'] - res_task['t_init'], res_task['t_init'], res_task['t_end']))
+            root_logger.info('task-{} come to an end'.format(task['id']))
+            root_logger.info('task-{} t_consume={}, t_init={}, t_end={}'.format(
+                             task['id'], res_task['t_end'] - res_task['t_init'], res_task['t_init'], res_task['t_end']))
 
-            print('produce 1 res_task for task-{}'.format(task['id']))
+            root_logger.info('produce 1 res_task for task-{}'.format(task['id']))
             ret_task = res_task
 
         else:
@@ -57,13 +54,13 @@ class Executor():
                 next_task['cur_step'] = task['cur_step'] + 1
                 next_task['task_name'] = next_task_name
                 next_task['input_ctx'] = output_ctx
-                print('made 1 next_task({}) for task-{}'.format(next_task_name, task['id']))
+                root_logger.info('made 1 next_task({}) for task-{}'.format(next_task_name, task['id']))
 
-                print('produce 1 next_task({}) for task-{}'.format(next_task_name, task['id']))
+                root_logger.info('produce 1 next_task({}) for task-{}'.format(next_task_name, task['id']))
                 ret_task = next_task
 
             else:
-                print('unsupported next_task_name({})'.format(next_task_name))
+                root_logger.info('unsupported next_task_name({})'.format(next_task_name))
 
         return ret_task
 
@@ -80,14 +77,14 @@ class Executor():
         assert(cur_step < len(wf))
                 
         if task_name == 'D' or task_name == 'C':
-            print('[{}][{}] executing task_name({})'.format(os.getpid(), __name__, task_name))
+            root_logger.info('[{}][{}] executing task_name({})'.format(os.getpid(), __name__, task_name))
             output_ctx = self.__executor[task_name](input_ctx)
 
             # wrap next task
             next_task = self.wrap_next_task(task, output_ctx)
 
         else:
-            print('[{}][{}] unsupported task_name({})'.format(os.getpid(), __name__, task_name))
+            root_logger.info('[{}][{}] unsupported task_name({})'.format(os.getpid(), __name__, task_name))
 
         return next_task
 

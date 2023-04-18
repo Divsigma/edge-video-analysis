@@ -9,8 +9,7 @@ import cv2
 import argparse
 
 import sys
-sys.path.append('test/headup_detect')
-import worker_func
+import executor
 
 import task_server_protocol
 from task_client_protocol import TaskClientProtocol
@@ -20,6 +19,7 @@ from cloud_client_protocol import CloudClientProtocol
 import task_utils
 from logging_utils import root_logger
 
+sys.path.append('test/headup_detect')
 from pose_generator import PoseEstimationGenerator
 from pose_worker import PoseEstimationExecutor
 from pose_displayer import PoseEstimationDisplayer
@@ -106,6 +106,7 @@ def edge_offloader_cbk(local_task_q, cloud_cli_trans, prior_task):
 #######################################
 async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
 
+    # for Python3.6
     loop = asyncio._get_running_loop()
 
     # connect to cloud server for uploading task
@@ -162,6 +163,7 @@ def cloud_offloader_cbk(local_task_q, prior_task):
 #######################################
 async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
 
+    # for Python3.6
     loop = asyncio._get_running_loop()
 
     # create a cloud server for accepting task
@@ -202,6 +204,7 @@ async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
 #######################################
 async def worker_loop(exec_obj, local_task_q, task_q_host, task_q_port):
 
+    # for Python3.6
     loop = asyncio._get_running_loop()
 
     # connect to task server for pushing task
@@ -307,21 +310,38 @@ def worker_main(exec_objname, local_task_q, task_q_host, task_q_port):
     if exec_obj:
         root_logger.info('exec_obj {} started'.format(exec_objname))
         if exec_objname == 'PoseEstimationGenerator':
+            # for Python3.6
             loop = asyncio.get_event_loop()
             loop.run_until_complete(asyncio.wait(
                 [generator_loop(exec_obj, task_q_host, task_q_port)]
             ))
             loop.run_forever()
+
+            # for Python3.7+
             # asyncio.run(generator_loop(exec_obj, task_q_host, task_q_port))
+
         elif exec_objname == 'PoseEstimationDisplayer':
-            asyncio.run(displayer_loop(exec_obj, local_task_q))
+            # for Python3.6
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(asyncio.wait(
+                [displayer_loop(exec_obj, local_task_q)]
+            ))
+            loop.run_forever()
+
+            # for Python3.7+
+            # asyncio.run(displayer_loop(exec_obj, local_task_q))
+
         elif exec_objname == 'PoseEstimationExecutor':
+            # for Python3.6
             loop = asyncio.get_event_loop()
             loop.run_until_complete(asyncio.wait(
                 [worker_loop(exec_obj, local_task_q, task_q_host, task_q_port)]
             ))
             loop.run_forever()
+
+            # for Python3.7+
             # asyncio.run(worker_loop(exec_obj, local_task_q, task_q_host, task_q_port))
+
         else:
             root_logger.warning('not support exec_objname')
     else:
@@ -385,16 +405,28 @@ if __name__ == '__main__':
         disp1.start()
 
     # run offloader
-
     if args.side == 'e' and args.cloud_ip and args.cloud_port:
+        # for Python3.6
         loop = asyncio.get_event_loop()
         loop.run_until_complete(asyncio.wait(
             [edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port)]
         ))
         loop.run_forever()
+
+        # for Python3.7+
         # asyncio.run(edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port))
+
     elif args.side == 'c':
-        asyncio.run(cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port))
+        # for Python3.6
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.wait(
+            [cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port)]
+        ))
+        loop.run_forever()
+
+        # for Python3.7+
+        # asyncio.run(cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port))
+
     else:
         root_logger.info('[ERROR] cannot start offloader_loop')
         worker1.terminate()
