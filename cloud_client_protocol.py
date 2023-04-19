@@ -4,6 +4,8 @@ import json
 
 import protocol_buffer
 
+from logging_utils import root_logger
+
 class CloudClientProtocol(asyncio.Protocol):
     def __init__(self):
         print('[{}] initing...'.format(__name__))
@@ -34,6 +36,10 @@ class CloudClientProtocol(asyncio.Protocol):
             print('[{}] [SKIP] not a strategy'.format(__name__))
 
         print('[{}] ==== done one handling ===='.format(__name__))
+
+    def write_context(self, context):
+        root_logger.info('cloud client protocol writing context')
+        self.__ptb.write_context(self.__trans, context)
 
 async def client_test_main():
     loop = asyncio.get_running_loop()

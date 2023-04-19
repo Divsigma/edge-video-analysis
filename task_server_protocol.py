@@ -72,11 +72,8 @@ class TaskServerProtocol(asyncio.Protocol):
             resp = dict()
             resp['cmd'] = 'pulled task'
             resp['body'] = prior_task
-            json_resp = json.dumps(resp)
-            len_json_resp = len(json_resp)
 
-            self.__trans.write(len_json_resp.to_bytes(length=4, byteorder='big', signed=False))
-            self.__trans.write(json_resp.encode())
+            self.__ptb.write_context(self.__trans, resp)
 
         if context['cmd'] == 'push':
             prior_task = context['body']
@@ -86,11 +83,8 @@ class TaskServerProtocol(asyncio.Protocol):
                 root_logger.warning('push failure')
                 resp = dict()
                 resp['cmd'] = 'failed'
-                json_resp = json.dumps(resp)
-                len_json_resp = len(json_resp)
 
-                self.__trans.write(len_json_resp.to_bytes(length=4, byteorder='big', signed=False))
-                self.__trans.write(json_resp.encode())
+                self.__ptb.write_context(self.__trans, resp)
 
             # demo: echo task
             # json_ctx = json.dumps(context)

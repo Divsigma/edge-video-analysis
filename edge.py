@@ -29,23 +29,19 @@ import pose_worker
 # wrapper func: (used by offloader)
 #     pull task from task queue server
 #######################################
-def pull_task_from_task_serv(client_trans):
+def pull_task_from_task_serv(client_protocol):
     request = dict()
  
     request['cmd'] = 'pull'
     request['body'] = None
 
-    json_req = json.dumps(request)
-    len_json_req = len(json_req)
-
-    client_trans.write(len_json_req.to_bytes(length=4, byteorder='big', signed=False))
-    client_trans.write(json_req.encode())
+    client_protocol.write_context(request)
 
 #######################################
 # wrapper func: (used by worker, generator)
 #     produce task to task queue server
 #######################################
-def push_task_to_task_serv(client_trans, cmd, task_body):
+def push_task_to_task_serv(client_protocol, cmd, task_body):
 
     request = dict()
     prior_task = dict()
@@ -56,11 +52,8 @@ def push_task_to_task_serv(client_trans, cmd, task_body):
     request['body'] = prior_task
 
     root_logger.info('produce_new_task (cmd = {}, prior= {})'.format(cmd, prior_task['prior']))
-    json_req = json.dumps(request)
-    len_json_req = len(json_req)
 
-    client_trans.write(len_json_req.to_bytes(length=4, byteorder='big', signed=False))
-    client_trans.write(json_req.encode())
+    client_protocol.write_context(request)
 
 
 
@@ -73,7 +66,7 @@ def push_task_to_task_serv(client_trans, cmd, task_body):
 # (TODO)
 #
 #######################################
-def edge_offloader_cbk(local_task_q, cloud_cli_trans, prior_task):
+def edge_offloader_cbk(local_task_q, cloud_cli_protocol, prior_task):
     # print('[{}] Always offloading prior_task(prior={}) to local ...(local_task_q.qsize() = {})'.\
     #       format(__name__, prior_task['prior'], [q.qsize() for q in local_task_q]))
 
@@ -98,7 +91,7 @@ def edge_offloader_cbk(local_task_q, cloud_cli_trans, prior_task):
     if task_name == 'D' or task_name == 'C':
         local_task_q[0].put(task)
     elif task_name == 'R':
-        push_task_to_task_serv(cloud_cli_trans, cmd='task', task_body=task)
+        push_task_to_task_serv(cloud_cli_protocol, cmd='task', task_body=task)
 
 #######################################
 # (Edge) offloader func:
@@ -120,7 +113,7 @@ async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
     # connect to task queue for pulling task
     task_cli_trans, task_cli_protocol = await loop.create_connection(
         lambda: TaskClientProtocol(
-            functools.partial(edge_offloader_cbk, local_task_q, cloud_cli_trans)
+            functools.partial(edge_offloader_cbk, local_task_q, cloud_cli_protocol)
         ),
         '127.0.0.1', task_q_port
     )
@@ -132,7 +125,7 @@ async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
         await asyncio.sleep(0.03)
 
         # request to task server
-        pull_task_from_task_serv(task_cli_trans)
+        pull_task_from_task_serv(task_cli_protocol)
 
 
 
@@ -192,7 +185,7 @@ async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
         # await asyncio.sleep(0.03)
 
         # request to task server
-        # pull_task_from_task_serv(task_cli_trans)
+        # pull_task_from_task_serv(task_cli_protocol)
 
 
 
@@ -230,7 +223,7 @@ async def worker_loop(exec_obj, local_task_q, task_q_host, task_q_port):
 
         # produce next task
         root_logger.info('pushing new task')
-        push_task_to_task_serv(task_cli_trans, cmd='push', task_body=ret_task)
+        push_task_to_task_serv(task_cli_protocol, cmd='push', task_body=ret_task)
 
 
 
@@ -264,7 +257,7 @@ async def generator_loop(gene_obj, task_q_host, task_q_port):
         assert(init_task)
 
         root_logger.info('pushing init task')
-        push_task_to_task_serv(task_cli_trans, cmd='push', task_body=init_task)
+        push_task_to_task_serv(task_cli_protocol, cmd='push', task_body=init_task)
         root_logger.info('pushed init task, count = {}'.format(count))
         count = count + 1
 

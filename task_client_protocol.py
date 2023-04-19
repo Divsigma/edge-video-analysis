@@ -46,6 +46,10 @@ class TaskClientProtocol(asyncio.Protocol):
 
         root_logger.info('<< done handling a context (cmd = {})'.format(context['cmd']))
 
+    def write_context(self, context):
+        root_logger.info('task client protocol writing context')
+        self.__ptb.write_context(self.__trans, context)
+
 if __name__ == '__main__':
     print('{} empty'.format(__name__))
 

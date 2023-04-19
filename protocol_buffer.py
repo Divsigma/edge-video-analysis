@@ -70,6 +70,14 @@ class ProtocolBuffer():
 
                 # print('[{}] <<<< done request\n'.format(__name__))
 
+    def write_context(self, trans, context):
+        json_context = json.dumps(context)
+        length_json_context = len(json_context)
+
+        # trans is a object of asyncio.Transport
+        trans.write(length_json_context.to_bytes(length=4, byteorder='big', signed=False))
+        trans.write(json_context.encode())
+
     # TODO: default context handler
     def handle_context(self, context):
         root_logger.warning('>> start handling a context (cmd={})'.format(context['cmd']))
