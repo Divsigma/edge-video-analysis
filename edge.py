@@ -2,6 +2,8 @@ import asyncio
 import time
 import functools
 import multiprocessing as mp
+if __name__ == '__main__':
+    mp.set_start_method('spawn')
 import json
 import buffer
 import random
@@ -97,7 +99,34 @@ def edge_offloader_cbk(local_task_q, cloud_cli_protocol, prior_task):
 # (Edge) offloader func:
 #     offloader main loop
 #######################################
-async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
+async def edge_offloader_loop(cloud_ip, cloud_port, task_q_port):
+
+    # should create a MULTI-PROCESS queue
+    # to deliver task from offloader to worker
+    local_task_q = [mp.Queue(10), mp.Queue(10)]
+
+    # fork worker(s)
+    worker1 = mp.Process(target=worker_main,
+                         args=('PoseEstimationExecutor',
+                               local_task_q[0],
+                               '127.0.0.1', task_q_port))
+    generator1 = mp.Process(target=worker_main,
+                            args=('PoseEstimationGenerator',
+                                  None,
+                                  '127.0.0.1', task_q_port))
+    # start task queue server
+    # NOTES: should ensure task queue server is started
+    #        before offloader trying to connect
+    task_q_server = mp.Process(target=task_server_protocol.init_and_start_task_q_server,
+                               args=(task_q_port,))
+    task_q_server.start()
+    await asyncio.sleep(2)
+
+
+    # start worker(s)
+    worker1.start()
+    generator1.start()
+
 
     # for Python3.6
     loop = asyncio._get_running_loop()
@@ -117,15 +146,28 @@ async def edge_offloader_loop(local_task_q, cloud_ip, cloud_port, task_q_port):
         ),
         '127.0.0.1', task_q_port
     )
+    root_logger.info('connect to task_q_server')
 
     # TODO: pulling for task every one sec
+    t = time.time()
+    worker_count = 1
     while True:
-        root_logger.info('try to pull one task')
+        root_logger.info('try to pull one task, worker_count = {}'.format(worker_count))
 
         await asyncio.sleep(0.03)
 
         # request to task server
         pull_task_from_task_serv(task_cli_protocol)
+
+        # if time.time() - t > 5 and worker_count < 3:
+        #      workerx = mp.Process(target=worker_main,
+        #                           args=('PoseEstimationExecutor',
+        #                                 local_task_q[0],
+        #                                 '127.0.0.1', task_q_port))
+        #      workerx.start()
+        #      worker_count += 1
+        #      t = time.time()
+            
 
 
 
@@ -154,32 +196,81 @@ def cloud_offloader_cbk(local_task_q, prior_task):
 # (Cloud) offloader func:
 #     offloader main loop
 #######################################
-async def cloud_offloader_loop(local_task_q, cloud_port, task_q_port):
+class CloudServerFactory():
+    def __init__(self, local_task_q):
+        self.__protocol_list = list()
+        self.__local_task_q = local_task_q
+
+    def make_protocol(self):
+        new_protocol = CloudServerProtocol(functools.partial(cloud_offloader_cbk, self.__local_task_q))
+        self.__protocol_list.append(new_protocol)
+        return new_protocol
+
+    def print_protocol(self):
+        # print('{}'.format(self.__protocol_list))
+        for p in self.__protocol_list:
+            print('peername={}'.format(p._CloudServerProtocol__trans.get_extra_info('peername')))
+
+async def cloud_offloader_loop(cloud_port, task_q_port):
+
+    root_logger.warning('loop={}'.format(asyncio._get_running_loop()))
+
+    # should create a MULTI-PROCESS queue
+    # to deliver task from offloader to worker
+    local_task_q = [mp.Queue(10), mp.Queue(10)]
+
+    # fork worker(s)
+    worker1 = mp.Process(target=worker_main,
+                         args=('PoseEstimationExecutor',
+                               local_task_q[0],
+                               '127.0.0.1', task_q_port))
+    disp1 = mp.Process(target=worker_main,
+                       args=('PoseEstimationDisplayer',
+                             local_task_q[1],
+                             None, None))
+
+    # start task queue server
+    # NOTES: should ensure task queue server is started
+    #        before offloader trying to connect
+    task_q_server = mp.Process(target=task_server_protocol.init_and_start_task_q_server,
+                               args=(task_q_port,))
+    task_q_server.start()
+    await asyncio.sleep(2)
+
+    # start worker(s)
+    worker1.start()
+    disp1.start()
+
 
     # for Python3.6
     loop = asyncio._get_running_loop()
 
     # create a cloud server for accepting task
     # WARNING: WHY NO ERROR on stdout when cannot create CloudServerProtocol() ?
-    cloud_serv = await loop.create_server(
-        lambda: CloudServerProtocol(
-            functools.partial(cloud_offloader_cbk, local_task_q)
-        ),
-        '0.0.0.0', cloud_port
-    )
+    cloud_server_factory = CloudServerFactory(local_task_q)
+    await loop.create_server(cloud_server_factory.make_protocol, '0.0.0.0', cloud_port)
+    # cloud_serv = await loop.create_server(
+    #     lambda: CloudServerProtocol(
+    #         functools.partial(cloud_offloader_cbk, local_task_q)
+    #     ),
+    #     '0.0.0.0', cloud_port
+    # )
     root_logger.info('listening on cloud_port = {}'.format(cloud_port))
 
     # connect to task queue for pulling task
+    root_logger.info('try to connect 127.0.0.1:{}'.format(task_q_port))
     task_cli_trans, task_cli_protocol = await loop.create_connection(
         lambda: TaskClientProtocol(
             functools.partial(cloud_offloader_cbk, local_task_q)
         ),
         '127.0.0.1', task_q_port
     )
+    root_logger.info('connect to task_q_server')
 
     # TODO: pulling for task every one sec
     while True:
         root_logger.info('try to pull one task')
+        cloud_server_factory.print_protocol()
 
         await asyncio.sleep(5)
         # await asyncio.sleep(0.03)
@@ -363,62 +454,28 @@ if __name__ == '__main__':
     if args.side == 'c':
         args.task_q_port = 7777
 
-    # should create a MULTI-PROCESS queue
-    # to deliver task from offloader to worker
-    local_task_q = [mp.Queue(10), mp.Queue(10)]
-
-    # app_obj = wzl_fun.AppInfo()
-
-    # fork worker(s)
-    worker1 = mp.Process(target=worker_main,
-                         args=('PoseEstimationExecutor',
-                               local_task_q[0],
-                               '127.0.0.1', args.task_q_port))
-    if args.side == 'e':
-        generator1 = mp.Process(target=worker_main,
-                                args=('PoseEstimationGenerator',
-                                      None,
-                                      '127.0.0.1', args.task_q_port))
-    if args.side == 'c':
-        disp1 = mp.Process(target=worker_main,
-                           args=('PoseEstimationDisplayer',
-                                 local_task_q[1],
-                                 None, None))
-
-    # start task queue server
-    task_q_server = mp.Process(target=task_server_protocol.init_and_start_task_q_server,
-                               args=(args.task_q_port,))
-    task_q_server.start()
-
-
-    worker1.start()
-    if args.side == 'e':
-        generator1.start()
-    if args.side == 'c':
-        disp1.start()
-
     # run offloader
     if args.side == 'e' and args.cloud_ip and args.cloud_port:
         # for Python3.6
         loop = asyncio.get_event_loop()
         loop.run_until_complete(asyncio.wait(
-            [edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port)]
+            [edge_offloader_loop(args.cloud_ip, args.cloud_port, args.task_q_port)]
         ))
         loop.run_forever()
 
         # for Python3.7+
-        # asyncio.run(edge_offloader_loop(local_task_q, args.cloud_ip, args.cloud_port, args.task_q_port))
+        # asyncio.run(edge_offloader_loop(args.cloud_ip, args.cloud_port, args.task_q_port))
 
     elif args.side == 'c':
         # for Python3.6
         loop = asyncio.get_event_loop()
         loop.run_until_complete(asyncio.wait(
-            [cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port)]
+            [cloud_offloader_loop(args.cloud_port, args.task_q_port)]
         ))
         loop.run_forever()
 
         # for Python3.7+
-        # asyncio.run(cloud_offloader_loop(local_task_q, args.cloud_port, args.task_q_port))
+        # asyncio.run(cloud_offloader_loop(args.cloud_port, args.task_q_port))
 
     else:
         root_logger.info('[ERROR] cannot start offloader_loop')
